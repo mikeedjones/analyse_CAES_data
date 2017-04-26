@@ -20,7 +20,7 @@ def width_at(xyz,xo,yo,amp):
 
 def initial_guess(xyz):
     amplitude=max(xyz.flatten())
-    xo,yo=scim.center_of_mass(xyz)
+    xo,yo=scim.center_of_mass(np.where(xyz > amplitude/2, 1, 0))
     sigma_x,sigma_y=width_at(xyz,int(xo),int(yo),amplitude)
     theta=0
     offset=0    
@@ -49,10 +49,10 @@ def twoD_Gaussian(xy, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
                             + c*((y-yo)**2)))
     return g.ravel()
 
-def profileanimation():
+def profileanimation(outfile):
     import subprocess
-    subprocess.check_call(["/usr/local/bin/ffmpeg","-framerate", "1", "-i", "img/%1d.png", 
-                              "-c:v", "libx264", "-r", "30", "-pix_fmt", "yuv420p", "out.mp4"])
+    subprocess.check_call(["/usr/local/bin/ffmpeg","-framerate", "10", "-i", "img/%1d.png", 
+                              "-c:v", "libx264", "-r", "30", "-pix_fmt", "yuv420p", outfile])
     subprocess.check_call(["rm", "-rf",  "img"])
 
 def generateBG(BGpath, verbose=0):
@@ -72,6 +72,9 @@ def remove_folder(path):
          # remove if exists
          shutil.rmtree(path)
          remove_folder("/folder_name")
+         
+def align_shots(z,ig):
+    return z[int(ig[1])-100:int(ig[1])+100,int(ig[2])-100:int(ig[2])+100]
 
 def importdata(directory, verbose=0):
     import os
@@ -80,20 +83,22 @@ def importdata(directory, verbose=0):
     i=0
     lastnames='x y z f 1000'
     lastheader=[0, 0]
-    xyz_ave=np.zeros([416,424])
-    x = np.linspace(0,416,416)
-    y = np.linspace(0,424,424)
+    z_ave=np.zeros([200,200])
+    x = np.linspace(0,200,200)
+    y = np.linspace(0,200,200)
     x,y = np.meshgrid(x, y)
     xy=x,y
     j=1
     flag=True
     stdx=[]
     biases=[]
+    jlist=[]
 #    tx=np.round(np.linspace(0,950*34E-3,num=5))
 #    txloc=tx/34E-3
 #    
 #    ty=np.round(np.linspace(0,600*34E-3,num=6))
 #    tyloc=ty/34E-3+400
+    expt_name=directory.split('/')[-1]    
     
     try:
         for root, dirs, files in os.walk(directory):
@@ -108,16 +113,19 @@ def importdata(directory, verbose=0):
             
             flag=average_shots(names,lastnames,header,lastheader)
             
+            ig=initial_guess(xyz)
+            
             if flag == True:
-                xyz_ave=xyz+xyz_ave
+                z_ave=align_shots(xyz,ig)+z_ave
                 j+=1
             else:
-                if j!=1:
-                    m=max(xyz_ave.flatten())
+                if j>3:
+                    ig_ave=initial_guess(z_ave)  
                     plt.clf()
-                    plt.imshow((np.clip(xyz_ave/m,0,1)), cmap=plt.cm.viridis, interpolation='nearest')
+                    plt.imshow((np.clip(z_ave/ig_ave[0],0,1)), cmap=plt.cm.viridis, interpolation='nearest')
                     lam=float(lastnames.split()[4].split('.')[0])
                     bias=lastheader[1]
+                    
                     plt.title(str(lam)+' nm, '+str(bias)+' V')
                     plt.colorbar()
     #                plt.xticks(txloc,tx)
@@ -125,64 +133,44 @@ def importdata(directory, verbose=0):
     #                plt.xlabel("x (mm)")
     #                plt.ylabel("y (mm)")
                     savpath = 'img'
+                    
                     if not os.path.isdir(savpath):
                         os.makedirs(savpath)  
                     plt.savefig(savpath+'/{}.png'.format(i),dpi=250)
-                    ig=initial_guess(xyz_ave)
-                    try:        
-                        popt, pcov = so.curve_fit(twoD_Gaussian, xy, xyz_ave.reshape(416*424), p0=ig, bounds=bounds(ig))
+                    try:                              
+                        popt, pcov = so.curve_fit(twoD_Gaussian, xy, z_ave.reshape(200**2), p0=ig_ave, bounds=bounds(ig_ave))
                         stdx.append(popt[3]) 
                         biases.append(bias)
+                        jlist.append(j)
                     except:
                         print(names)
                         print(bias)
-                        print(ig)
+                        print(ig_ave)
                         print(bounds(ig))
+                        import traceback
+                        # Print the stack traceback
+                        traceback.print_exc()
                     j=1
                     i+=1
-                    xyz_ave=xyz
+                    z_ave=align_shots(xyz,ig)
             lastnames=names
             lastheader=header
-        if flag == True:
-            xyz_ave=xyz+xyz_ave
-            j+=1
-        m=max(xyz_ave.flatten())
+
+                    
+        
+        os.remove(savpath+"/0.png")
+        profileanimation(directory+"/"+expt_name+".mp4")
         plt.clf()
-        plt.imshow(np.clip(xyz_ave/m,0,1), cmap=plt.cm.viridis, interpolation='nearest')
-        lam=float(names.split()[4].split('.')[0])
-        bias=header[1]
-        plt.title(str(lam)+' nm, '+str(bias)+' V')
-        plt.colorbar()
-#        plt.ylim([400,1000])
-#        plt.xticks(txloc,tx)
-#        plt.yticks(tyloc,ty)
-#        plt.xlabel("x (mm)")
-#        plt.ylabel("y (mm)")
-        savpath = 'img'
-        if not os.path.isdir(savpath):
-            os.makedirs(savpath)  
-        plt.savefig(savpath+'/{}.png'.format(i),dpi=250)
-        ig=initial_guess(xyz_ave)
-        try:        
-            popt, pcov = so.curve_fit(twoD_Gaussian, xy, xyz_ave.reshape(416*424), p0=ig, bounds=bounds(ig))
-            stdx.append(popt[3]) 
-            biases.append(bias)
-        except:
-            print(names)
-            print(bias)
-            print(ig)
-            print(bounds(ig))
-        os.remove("img/0.png")
-        profileanimation()
-        plt.clf()
-        plt.plot(biases,stdx)
-        plt.savefig("biases_vs_stdx.svg")
-        return biases,stdx
+        plt.plot(biases,stdx,'x')
+        plt.xlabel("Einzel lens bias / V")
+        plt.ylabel("Electron bunch size / a.u")
+        plt.savefig(directory+"/biases_vs_stdx.svg")
+        return biases,stdx,jlist
     except:
         import traceback
         # Print the stack traceback
         traceback.print_exc()
-        return biases,stdx
+        return biases,stdx,jlist
   
 
 
