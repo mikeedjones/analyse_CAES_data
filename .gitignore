@@ -1,5 +1,6 @@
 
 *.png
 *.mp4
-
+*.txt
 *.svg
+*.gdf
