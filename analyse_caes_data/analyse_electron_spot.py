@@ -14,10 +14,11 @@ from scipy.ndimage.filters import gaussian_filter
 import scipy.interpolate as si
 import scipy.constants as sc
 import operator
+from bias import bias_group
 
 xlimit=145
 ylimit=145
-pixpermm=31.32*1000
+pixpermm=53.4*1000
 
 def makefitsize(biases,stdy, color='b',label='None'):
     fitsize=so.curve_fit(sizefit,biases,np.array(stdy)/pixpermm,p0=0.01,bounds=(0,1))
@@ -29,11 +30,11 @@ def makefitsize(biases,stdy, color='b',label='None'):
     return fitsize;
     
 def makefitT(biases,stdy, color='b',label='None'):
-    fitT=so.curve_fit(tempfit,biases,np.array(stdy)/pixpermm,p0=[5,3,0],bounds=(-50,50))
+    fitT=so.curve_fit(tempfit,biases,np.array(stdy)/pixpermm,p0=[29,1E-5,0],bounds=(-1,50))
     plt.gcf()
     #plt.plot(biases,np.array(stdy)/pixpermm,color=color,marker='.',linestyle='None',label=label+', {:} K, '.format(fitT[0][0]))#+ '{:.1f} $\mu$m, '.format(fitT[0][1]*1E6))
     fittedfunction=tempfit(biases,fitT[0][0],fitT[0][1],fitT[0][2])#,fitT[0][2])
-    plt.plot(biases,fittedfunction,color=color,label=label+', {:.1f} K, '.format(fitT[0][0]*10)+ '{:.1f} $\mu$m, '.format(fitT[0][1]*1E2))
+    plt.plot(biases,fittedfunction,color=color,label=label+', {:.1f} K, '.format(fitT[0][0])+ '{:.1f} $\mu$m, '.format(fitT[0][1]*1E6))
     plt.xlabel("Einzel lens bias / V")
     plt.ylabel("Electron bunch size / mm")
     #print(biases[np.argmin(fittedfunction)])
@@ -41,8 +42,8 @@ def makefitT(biases,stdy, color='b',label='None'):
     
     return fitT;
 
-A_tab=np.genfromtxt('../../experimental_data/15-11-17/A_and_B/A_vs_z_vs_BE.txt')
-B_tab=np.genfromtxt('../../experimental_data/15-11-17/A_and_B/B_vs_z_vs_BE.txt')
+A_tab=np.genfromtxt('../../experimental_data/07-03-18/482/A_and_B/A_vs_z_vs_BE.txt')
+B_tab=np.genfromtxt('../../experimental_data/07-03-18/482/A_and_B/B_vs_z_vs_BE.txt')
 #BE_table=np.genfromtxt('19-08-17/z_v_Ext_v_BE.txt')
 
 def B(E,z):
@@ -82,11 +83,10 @@ def B_blur(E,z,sigmaz):
 
 def tempfit(U, T, sigmay, z):#, yfwhm):
     U=np.array(U)    
-
-    E=1500
-    T=T*10
-    #sigmay=sigmay*1E-4
-    #z=-3E-3
+    #z=0
+    #T=10
+    #sigmay=1E-4
+    E=2500
     y=(np.sqrt(abs((A(U,z)**2*sigmay**2)+B(U,z)**2*(sc.k*T)/(2*sc.e*E)))) #0.506211 is conversion factor between
                                                                             #the voltage on the repel plate and the beam energy
     return y;
@@ -108,113 +108,6 @@ def sizefit(U, sigmay):#, yfwhm):
 number of points above threshold along that line. Then that line is rotated by pi/2 and the process is repeated
 for the second axis.'''
 
-
-def find_axis(xyz,xo,yo,threshold):
-    xa=np.array([-1000,1000])
-    m_arr=[]
-    l_arr=[]
-    #boundingbox=np.where(xyz > threshold)
-    #plt.scatter(boundingbox[1],boundingbox[0],color='C3')
-    for theta in np.arange(-sc.pi,sc.pi,0.1):
-        ya=np.tan(theta)*(xa-xo)+yo
-        length = int(np.hypot(xa[1]-xa[0], ya[1]-ya[0]))
-        if length < 100000:
-            xt, yt = np.linspace(xa[0], xa[1], length), np.linspace(ya[0], ya[1], length)
-            delete=np.array([*np.where(xt<0)[0], *np.where(xt>=len(xyz[0]))[0], *np.where(yt<0)[0], *np.where(yt>=len(xyz)-2)[0]])
-            yt=np.delete(yt,delete.astype(np.int))
-            xt=np.delete(xt,delete.astype(np.int))
-            l_t = sum(np.where(xyz[yt.astype(np.int), xt.astype(np.int)]> threshold, 1, 0))
-            l_arr.append(l_t)
-            m_arr.append(np.tan(theta))
-            
-    index, l_major = max(enumerate(l_arr), key=operator.itemgetter(1))
-    
-    m_at_max_l=m_arr[index]
-    
-    #calculate the width of the minor axis
-    
-    yr=-1/m_at_max_l*(xa-xo)+yo
-    length = int(np.hypot(xa[1]-xa[0], yr[1]-yr[0]))
-    if length < 100000:
-        xt, yt = np.linspace(xa[0], xa[1], length), np.linspace(yr[0], yr[1], length)
-        delete=np.array([*np.where(xt<0)[0], *np.where(xt>=len(xyz[0]))[0], *np.where(yt<0)[0], *np.where(yt>=len(xyz))[0]])
-        yt=np.delete(yt,delete.astype(np.int))
-        xt=np.delete(xt,delete.astype(np.int))
-    
-    l_minor=sum(np.where(xyz[yt.astype(np.int), xt.astype(np.int)]> threshold, 1, 0))
-#    print('minor and major:')
-#    print(l_minor)
-#    print(l_major)
-    
-    return l_major/2.634, l_minor/2.634, sc.pi-np.arctan(m_at_max_l)
-    
-
-def initial_guess(xyz,threshold_perc=99,flag=False):
-    xyz_blurred=gaussian_filter(xyz, sigma=len(xyz[0])/50)
-    amplitude=max(xyz_blurred.flatten())
-    threshold=np.percentile(xyz_blurred.flatten(),threshold_perc)
-    if flag==True:
-        threshold=amplitude*0.75
-    yo,xo=scim.center_of_mass(np.where(xyz_blurred > threshold, 1, 0))
-    
-    #plt.imshow(xyz)
-
-    #plt.plot(xo,yo,marker='o')
-    
-    #plt.show()
-    
-    #plt.clf()
-    
-    sigma_x,sigma_y,theta=find_axis(xyz_blurred,int(np.round(xo)),int(np.round(yo)),threshold)
-    offset=np.mean(xyz[:10,:10].flatten())
-    #print(amplitude, xo, yo, sigma_x, sigma_y, theta, offset)
-    
-    return (amplitude, xo, yo, sigma_x, sigma_y, theta, offset)
-    
-def bounds(ig):
-    
-    lower_factor=0.5
-    upper_factor=1.5
-    
-    amplitude_l=ig[0]*lower_factor
-    sigma_x_l=ig[3]*lower_factor
-    sigma_y_l=ig[4]*lower_factor
-    xo_l=ig[1]-ig[3]*(1-lower_factor)
-    yo_l=ig[2]-ig[4]*(1-lower_factor)
-    theta_l=ig[5]-sc.pi/6
-    offset_l=ig[6]*lower_factor
-    
-    amplitude=ig[0]*upper_factor
-    sigma_x=ig[3]*upper_factor
-    sigma_y=ig[4]*upper_factor
-    xo=ig[1]+ig[3]*(upper_factor-1)
-    yo=ig[2]+ig[4]*(upper_factor-1)
-    theta=ig[5]+sc.pi/6
-    offset=ig[6]*upper_factor
-    
-    return [amplitude_l, xo_l, yo_l, sigma_x_l, sigma_y_l, theta_l, offset_l],[amplitude, xo, yo, sigma_x, sigma_y, theta, offset]
-
-def twoD_Gaussian(xy, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
-    x, y = xy
-    xo = float(xo)
-    yo = float(yo)    
-    a = (np.cos(theta)**2)/(2*sigma_x**2) + (np.sin(theta)**2)/(2*sigma_y**2)
-    b = -(np.sin(2*theta))/(4*sigma_x**2) + (np.sin(2*theta))/(4*sigma_y**2)
-    c = (np.sin(theta)**2)/(2*sigma_x**2) + (np.cos(theta)**2)/(2*sigma_y**2)
-    g = np.clip(amplitude*np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) 
-                            + c*((y-yo)**2))),offset,5000)
-    return g.ravel()
-
-def twoD_Gaussian_mesh(xy, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
-    x, y = xy
-    xo = float(xo)
-    yo = float(yo)    
-    a = (np.cos(theta)**2)/(2*sigma_x**2) + (np.sin(theta)**2)/(2*sigma_y**2)
-    b = -(np.sin(2*theta))/(4*sigma_x**2) + (np.sin(2*theta))/(4*sigma_y**2)
-    c = (np.sin(theta)**2)/(2*sigma_x**2) + (np.cos(theta)**2)/(2*sigma_y**2)
-    g = np.clip(amplitude*np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) 
-                            + c*((y-yo)**2))),offset,1E20)
-    return g
 
 def profileanimation(outfile):
     import subprocess
@@ -254,124 +147,76 @@ def align_shots(z,ig):
 
 def importdata(directory, verbose=0, biases=[], outdir='out', outfile='none_given',ptype='e'):
     import os
+    import re
     if not os.path.exists (directory):
+        print("No such folder")
         return -1
-    i=0
     
     if outfile == 'none_given':
         outfile = directory.split('/')[-1] 
         outdir = directory.split('/')[-3]+'/'+directory.split('/')[-2]
     
     expt_name=outdir+outfile
-    j=0
-    stdx=[]
-    stdy=[] 
-    x0=[]
-    y0=[]
-    estdx=[]
-    estdy=[]
-    biases=[]
-    jlist=[]
-    ig_stdx=[]
-    ig_stdy=[]
-    sumpix=[]
-    theta=[]
-    l=0
+    bias_groups={}
     k=0
     
     try:
         for root, dirs, files in os.walk(directory):
+          for names in files:
+            filepath = os.path.join(root,names)
+            if "header" in names:
+                header=np.genfromtxt(filepath,names=True)
+        
+          bg_open=False
           for names in tqdm(files,smoothing=0):
             if names==".DS_Store" : continue   
-                    
-            if verbose == 1:
-              print('Hashing', names)
+            if "header" in names : continue    
+        
             filepath = os.path.join(root,names)
             
-            xyz=np.transpose(np.genfromtxt(filepath,skip_header=1))
-            header=np.genfromtxt(filepath, max_rows=1)
+            if "bg" in names:
+                if bg_open == False:
+                    bg=bias_group(0, 0, np.transpose(np.genfromtxt(filepath))[10:][10:])
+                    bg_open=True
+                    continue
+                else:
+                    bg.add_shot(0, 0, np.transpose(np.genfromtxt(filepath))[10:][10:])
+                    continue
             
-            #only want to try and fit when there is a spot to fit to. 
-            
-            std=np.std(xyz)
-            
-            if std<1: 
-#                plt.imshow(xyz)
-#                plt.title(std)
-#                plt.show()
-#                plt.clf()
-                continue
-            
-            #flag=False#average_shots(names,lastnames,header,lastheader)
-            ig=initial_guess(xyz)
-            plt.clf()
-            z_crop=align_shots(xyz,ig)
-            ig_ave=initial_guess(z_crop,flag=True)  
-            x = np.linspace(0,len(z_crop),len(z_crop))
-            y = np.linspace(0,len(z_crop[0]),len(z_crop[0]))
-            x,y = np.meshgrid(x, y)
-            xy=x,y
-#            plt.clf()
-#            plt.imshow((np.clip(z_crop/ig_ave[0],0,1)), cmap=plt.cm.viridis, interpolation='nearest')
-#            plt.show()
-            #lam=float(names.split()[4].split('.')[0])
+            if verbose == 1:
+              print('Hashing', names)
+            shot_no=int(re.split('_|\.',names)[1])
             if ptype=='i':
-                bias=header[4] 
+                bias=header["V5"][shot_no+1]#shot numbering starts from 1
             
-            else:bias=header[1]
+            else:bias=header["V1"][shot_no+1]
             
-            try:                              
-                popt, pcov = so.curve_fit(twoD_Gaussian, xy, z_crop.reshape(len(z_crop)*len(z_crop[0])), p0=ig_ave, bounds=bounds(ig_ave))
-                stdx.append(popt[3]) 
-                stdy.append(popt[4])
-                x0.append(popt[1])#+ig[1]-ig[3])
-                y0.append(popt[2])#+ig[2]-ig[3])
-                stderr=np.diag(pcov)
-                estdx.append(stderr[3]) 
-                estdy.append(stderr[4])
-                biases.append(bias)
-                ig_stdx.append(ig_ave[1])
-                ig_stdy.append(ig_ave[2])
-                sumpix.append(sum(sum(z_crop)))
-                jlist.append(j)
-                theta.append(popt[5])
-                
-                if not os.path.exists('img'):
-                    os.makedirs('img')
-                 
-                l=l+1
-                
-                plt.imshow(z_crop, cmap=plt.cm.viridis, interpolation='nearest')
-                plt.colorbar()
-                plt.xlabel("x (mm)")
-                plt.ylabel("y (mm)")
-                plt.title(bias)
-                Z=twoD_Gaussian_mesh(xy,*ig_ave)
-                Z1=twoD_Gaussian_mesh(xy,*popt)
-                plt.contour(x, y, Z,linewidths=0.5,colors='C0')
-                plt.contour(x, y, Z1,linewidths=0.5,colors='C1')
-                plt.savefig('img/{}.png'.format(k),dpi=250)
-                plt.clf()
-                k+=1
-                l=0
-#                
-
-                
+            if 100<bias<5500:
+                if np.around(bias,decimals=-1) in bias_groups:
+                    bias_groups[np.around(bias,decimals=-1)].add_shot(header['voltage_change'][shot_no+1], bias, np.transpose(np.genfromtxt(filepath))[10:][10:])
+                else:
+                    bias_groups[np.around(bias,decimals=-1)]=bias_group(header['voltage_change'][shot_no+1], bias, np.transpose(np.genfromtxt(filepath))[10:][10:])
+        
+        
+        
+        k=0
+        fits=[]
+        for bias, group in tqdm(sorted(bias_groups.items()),smoothing=0):
+            try:
+                if group.shot_count<10:
+                    continue
+                else:
+                    group.fit_gaussain(bg.x_section/bg.shot_count)
+                    group.save_fig(k)
+                    fits.append(group.fit)
+                    k+=1
             except:
                 import traceback
                 # Print the stack traceback
                 traceback.print_exc()
-                print(names)
                 print(bias)
-                print(ig_ave)
-                print(bounds(ig))
-                
-                
+                continue
             
-            j=1
-            i+=1
-        
-#        print(expt_name.split('/')[-1]+".mp4")
         if os.path.exists(expt_name.split('/')[-1]+".mp4"):
             os.remove(expt_name.split('/')[-1]+".mp4")
         profileanimation(expt_name.split('/')[-1]+".mp4")
@@ -386,18 +231,14 @@ def importdata(directory, verbose=0, biases=[], outdir='out', outfile='none_give
         if not os.path.exists(outdir):
             os.makedirs(outdir)
             
-        np.savetxt(outdir+'/'+outfile+'.txt', np.transpose([biases,stdx,stdy,estdx,estdy,x0,y0,theta]),header='biases stdx stdy errstdx errstdy x0 y0 theta' )
+        np.savetxt(outdir+'/'+outfile+'.txt', fits,header='biases stdx stdy errstdx errstdy x0 y0 theta' )
         
-        return biases,stdx,stdy,estdx,estdy
+        return bias_groups
     except:
         import traceback
         # Print the stack traceback
         traceback.print_exc()
-        print(names)
-        print(bias)
-        print(ig)
-        print(bounds(ig))
-        plt.imshow(xyz)
+        print(group)
         
 
   
@@ -481,11 +322,11 @@ def plot_waist_scan(directory):
                 
             else:
                 n=0
-                grouped_mean_strip_x=data['stdx'][n:]
+                grouped_mean_strip_x=abs(data['stdx'][n:]*np.cos(data['theta'][n:]))
                 group_error_strip_x=data['errstdx'][n:]
                 biases_strip_x=data['biases'][n:]
                 
-                grouped_mean_strip_y=data['stdy'][n:]
+                grouped_mean_strip_y=abs(data['stdy'][n:]*np.sin(data['theta'][n:]))
                 group_error_strip_y=data['errstdy'][n:]
                 biases_strip_y=data['biases'][n:]
             
@@ -495,10 +336,10 @@ def plot_waist_scan(directory):
             plt.figure(3)
             
             if len(grouped_mean_strip_y)>10:      
-                #f=plt.errorbar(biases_strip_x, grouped_mean_strip_x/pixpermm, yerr=group_error_strip_x/pixpermm, marker='.',linestyle='None',color=cx)
-                print(makefitT(biases_strip_y,grouped_mean_strip_y,color=cy,label='')[0])
+                f=plt.errorbar(biases_strip_x, grouped_mean_strip_x/pixpermm, yerr=group_error_strip_x/pixpermm, marker='.',linestyle='None',color=cx)
+                print(makefitT(biases_strip_y,grouped_mean_strip_y,color=cy,label='y')[0])
                 k=plt.errorbar(biases_strip_y, grouped_mean_strip_y/pixpermm, yerr=group_error_strip_y/pixpermm, marker='.',linestyle='None',color=cy)
-                #print(makefitT(biases_strip_x,grouped_mean_strip_x,color=cx,label=str(wavelength)+' uW x')[0])
+                print(makefitT(biases_strip_x,grouped_mean_strip_x,color=cx,label='x')[0])
 
             #print(min(data['stdx']/pixpermm))
             
