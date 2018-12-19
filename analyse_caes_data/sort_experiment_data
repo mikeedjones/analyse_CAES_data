@@ -1,0 +1,20 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Apr 25 11:49:49 2018
+
+@author: Michael
+"""
+import shutil
+    ...: import os
+    ...: 
+    ...: source = '/path/to/source_folder'
+    ...: dest1 = '/path/to/apple_folder'
+    ...: dest2 = '/path/to/intel_folder'
+    
+files = os.listdir(source)
+
+for f in files:
+    if (f.startswith("Apple") or f.startswith("apple")):
+        shutil.move(f, dest1)
+    elif (f.startswith("Intel") or f.startswith("intel")):
+        shutil.move(f, dest2)
