@@ -48,7 +48,12 @@ def axis_lengths(xyz, xo,yo,threshold_value,theta,xa=np.array([-1000,1000])):
         l.append(sum(np.where(line_data> threshold_value, 1, 0))*(ra[1]-ra[0]))
         ax.append(ra)
 #        plt.plot(xt,yt)
-#    plt.show()
+#        plt.xticks([])
+#        plt.yticks([])
+#        plt.xlim([0,89])
+#        plt.ylim([0,90])
+        
+#    plt.savefig('im_with_axes.pdf')
 #    plt.clf() 
     
     return l, ax, line_datas
@@ -71,12 +76,14 @@ def find_axis(xyz,xo,yo,threshold_value,theta=False):
             theta=psin[2]
         except:
             theta=thetas[np.argmax(find_axis[:50])]
-#        plt.plot(thetas,find_axis)
+        
+#        plt.plot(thetas,find_axis,'.')
 #        plt.plot(thetas,fit_cos(thetas, *psin))
-#        plt.show()
-#        plt.clf()
+#        plt.xlabel('$\\theta$')
+#        plt.xticks(np.linspace(0,2*sc.pi,5),['0','$\\pi/2$','$\\pi$','$3\\pi/4$','$2\\pi$'])
+#        plt.ylabel('Sum along line at $\\theta$')
+#        plt.savefig('guess_rotation.pdf')
 
-    
     l,ax,line_data=axis_lengths(xyz, xo,yo,threshold_value,theta)
       
   
@@ -107,11 +114,11 @@ def overlap_initial_guess(xyz,threshold_perc=95,flag=False):
         amplitude=np.nanmax(xyz.flatten())  
         threshold_value1=amplitude*0.3
         threshold_value=amplitude*0.8
-        offset=amplitude/10  
+        offset=0
     else:
         xyz=gaussian_filter(xyz, sigma=len(xyz[0])/10)
         amplitude=np.nanmax(xyz.flatten())
-        offset=amplitude/10
+        offset=0
         threshold_value=threshold_value1=amplitude*0.25
     
     yo,xo=scim.center_of_mass(np.clip(xyz,threshold_value,amplitude)-threshold_value)
@@ -145,27 +152,27 @@ def initial_guess(xyz,threshold_perc=95,flag=False,ig=[0,0,0,0,0]):
 
 #    print([amplitude, xo, yo, sigma_x, sigma_y, theta, amplitude/2])
     
-    return [amplitude, xo, yo, 1+sigma_x/2.35, 1+sigma_y/2.35, theta+sc.pi/2, 0]
+    return [1, xo, yo, 1+sigma_x/2.35, 1+sigma_y/2.35, theta+sc.pi/2, 0]
 
     
 def bounds(ig):
     
-    lower_factor=0.25
-    upper_factor=4
+    lower_factor=0.6
+    upper_factor=1.8
     
     amplitude_l=ig[0]*lower_factor
     sigma_x_l=ig[3]*lower_factor
     sigma_y_l=ig[4]*lower_factor
     sigma_x=ig[3]*upper_factor
     sigma_y=ig[4]*upper_factor
-    xo_l=ig[1]-sigma_x-1
-    yo_l=ig[2]-sigma_y-1
+    xo_l=ig[1]-sigma_x-5
+    yo_l=ig[2]-sigma_y-5
     theta_l=ig[5]-sc.pi/6
     offset_l=-1
     
     amplitude=ig[0]*upper_factor
-    xo=ig[1]+sigma_x+1
-    yo=ig[2]+sigma_y+1
+    xo=ig[1]+sigma_x+5
+    yo=ig[2]+sigma_y+5
     theta=ig[5]+sc.pi/6
     offset=1
     
@@ -177,8 +184,8 @@ def bounds(ig):
 
 def bounds_1d(ig,yflag=False):
     
-    lower_factor=0.25
-    upper_factor=2
+    lower_factor=0.75
+    upper_factor=1.5
     
     amplitude_l=ig[0]*lower_factor
     sigma_x_l=ig[3]*lower_factor
@@ -200,8 +207,8 @@ def bounds_1d(ig,yflag=False):
 
 def bounds_2(ig,yflag=False):
     
-    lower_factor=0.75
-    upper_factor=1.5
+    lower_factor=0.8
+    upper_factor=1.2
     
     amplitude_l=ig[0]*lower_factor
     amplitude1_l=ig[1]*lower_factor
@@ -236,10 +243,13 @@ def crop_shots(z,ig):
     width=max(ig[3:4])
     zx=len(z[0])
     zy=len(z)
-    xlimit_l=np.clip(x0-int(4*width),0,zy)
-    ylimit_l=np.clip(y0-int(4*width),0,zx)
-    xlimit_h=np.clip(x0+int(4*width),0,zy)
-    ylimit_h=np.clip(y0+int(4*width),0,zx)
+    
+    fac=4
+    
+    xlimit_l=np.clip(x0-int(fac*width),0,zy)
+    ylimit_l=np.clip(y0-int(fac*width),0,zx)
+    xlimit_h=np.clip(x0+int(fac*width),0,zy)
+    ylimit_h=np.clip(y0+int(fac*width),0,zx)
     #print(y0,x0,zx,zy,xlimit_l,ylimit_l,xlimit_h,ylimit_h)
     return z[xlimit_l:xlimit_h,ylimit_l:ylimit_h]
 
@@ -322,6 +332,24 @@ def add_array_offset(b1,b2,offset,center_h,center_v):
 
     return b1
 
+def rotate(im,x0,y0):
+    X=len(im[1])
+    Y=len(im)
+
+    for N in np.linspace(0,360,20)[:-1]:
+        im_t=sim.rotate(im,N)
+        
+        x_corner=int(np.clip(len(im_t[1])/2-x0,0,1000))
+        y_corner=int(np.clip(len(im_t)/2-y0,0,1000))
+        
+        im_t=im_t[x_corner:x_corner+X,y_corner:y_corner+Y]
+        try:
+            im=im+im_t
+        except:
+            continue
+    
+    return im
+    
 class bias_group:
     
     def __init__(self, voltage_change, V, shot, modelstdx=0,z0=0,errz0=0):
@@ -361,19 +389,26 @@ class bias_group:
             self.x_sections.append(shot)
             self.z0+=z0
             self.errz0+=errz0
+    
+    def add_locs(self, locs):
+        self.locs=locs[:,-1,:]
+        im=self.x_section
+        hist=np.histogram2d(*self.locs*1e3*pixpermm,bins=[len(im),len(im[1])],range=np.array([[-len(im),len(im)],[-len(im[1]),len(im[1])]])/2)
+
+        self.loc_group=bias_group(0, self.bias, hist[0])
+        self.loc_group.single_shot(0)
+        self.loc_group.locs_fit(self.locs)
             
     def single_shot(self,bg):
         for section in self.x_sections:
             self.base=section-bg
-        self.e_count=(sum(sum(self.base))/364.994)
-        off=np.mean(self.base[:10,:10])
-        self.x_section_ub=(self.base-off)/max(self.base.flatten()-off)
+            self.base=self.base-np.mean(self.base[:10,:10])
+        self.e_count=np.sum(self.base)/21.7
+        self.x_section_ub=(self.base)/np.max(self.base)
         
         self.initial_guess(bg)
         
-        f=self.x_section.flatten()
-        self.x_section=(self.x_section/(max(f)))
-        self.e_count=0
+        self.x_section=(self.x_section/np.max(self.x_section))
         
     def align_shots(self,bg):
         l=500
@@ -421,13 +456,25 @@ class bias_group:
                           [1,1,1]]
         obj_count=label(np.clip(self.crop,self.ig[0]*0.6,self.ig[0])-self.ig[0]*0.6,structure=connective_structure)[1]
         self.blur=0#self.ig[3]
-        if obj_count>10:        
-            self.blur=self.ig[3]
+#        if obj_count>4:        
+        self.blur=self.ig[3]/2
 #            print(obj_count)
-            self.crop=gaussian_filter(self.crop, sigma=self.blur,mode='constant',cval=0)
+        self.crop=gaussian_filter(self.crop, sigma=self.blur,mode='constant',cval=0)
         
+        self.crop=self.crop/np.max(self.crop)
         
         self.ig_ave=initial_guess(self.crop,flag=True,ig=self.ig)
+        
+        self.crop=rotate(self.crop_ub,*self.ig_ave[1:3])
+        
+        self.crop=self.crop/np.max(self.crop)
+        
+        self.blur=0
+        
+        self.ig_ave=initial_guess(self.crop,flag=True,ig=self.ig)
+        
+        self.crop=self.crop_ub
+        
         self.x_l = np.linspace(0,len(self.crop[0])-1,len(self.crop[0]))
         self.y_l = np.linspace(0,len(self.crop)-1,len(self.crop))
         self.x,self.y = np.meshgrid(self.x_l, self.y_l)
@@ -459,14 +506,12 @@ class bias_group:
         self.has_fit1d=True
         self.theta1=0
         
-        self.e_count=(sum(sum(self.x_section))/364.994)
-        
         self.fit1d=[self.bias/self.shot_count,self.shot_count,self.stdx1,self.stdy1,self.estd1x,self.estd1y,self.x01,self.y01,self.theta1,self.m_stdx,self.e_count,self.z0/self.shot_count,self.errz0/self.shot_count]
     
     def fit_gaussain(self, bg):
         self.popt, self.pcov = so.curve_fit(twoD_Gaussian, self.xy, self.crop.ravel(), p0=self.ig_ave, bounds=bounds(self.ig_ave))
-        self.popt[3]=np.sqrt(self.popt[3]**2-self.blur**2)
-        self.popt[4]=np.sqrt(self.popt[4]**2-self.blur**2)
+        self.popt[3]=np.sqrt(self.popt[3]**2-2*self.blur**2)
+        self.popt[4]=np.sqrt(self.popt[4]**2-2*self.blur**2)
         self.popt[0]=1
         self.stdx=self.popt[3]
         self.stdy=self.popt[4]
@@ -482,8 +527,36 @@ class bias_group:
         self.has_fit=True
         
         self.fit=[self.bias/self.shot_count,self.shot_count,self.stdx,self.stdy,self.estdx,self.estdy,self.x0,self.y0,self.theta,self.stdx-self.popt[6],self.e_count,self.z0/self.shot_count,self.errz0/self.shot_count]
+
+    def locs_fit(self,locs):
+        self.locs=locs
+        d=2
+        self.mean=d/(1E3*pixpermm)
+        x_sec=locs[0][np.where((abs(locs[1])-self.mean<0))]
+        self.stdx=np.std(x_sec)*1e3*pixpermm#np.sqrt(locs[1]**2+locs[1]**2)
+        self.stdy=self.stdx
+        self.x0=self.ig_ave[1]
+        self.y0=self.ig_ave[1]
+#        self.sumpix=sum(sum(self.crop))
+        self.theta=0     
+        self.has_fit=True
         
-    def transverse(self, k):
+        self.popt=[1,self.x0,self.y0,self.stdx,self.stdy,self.theta,0]
+
+    def locs_trans(self,ax):
+        d=2/(1E3*pixpermm)
+        n, bins, rects=ax.hist(self.locs[0][np.where((abs(self.locs[1])-d<0))]*1e3*pixpermm,density=True,bins=31,range=[-len(self.x_section),len(self.x_section)])
+        h=[]
+        for r in rects:
+            h.append(r.get_height())
+        
+        for r in rects:
+            r.set_height(r.get_height()/max(h))
+
+#        ax.set_xlabel('x (mm)')
+#        ax.set_ylabel('Density')
+        
+    def transverse(self, k=None,ax=plt.subplots(2,1)[1],ylab=True):
         if self.has_fit == True:
             l,transverse,line_data=axis_lengths(self.crop_ub, self.popt[1],self.popt[2],0,self.popt[5])
             self.x_data=line_data[1]
@@ -496,83 +569,93 @@ class bias_group:
             self.y_data=line_data[0]
             self.x_l1d =transverse[0]
             self.y_l1d =transverse[1]
+
+        #Show the x-cross sectio and the fit
+
+        xlim=len(self.crop)/2
+        ylim=len(self.crop[1])/2
         
-        plt.subplot(2,1,1)
         if self.has_fit1d == True:
-            plt.plot(self.x_l1d,gauss_function_1d(self.x_l1d, *self.popt_tx[:-1],0))
-            plt.plot(self.x_l1d,self.x_data)
+            ax[0].plot(self.x_l1d,gauss_function_1d(self.x_l1d, *self.popt_tx[:-1],0),color='C4')
+            ax[0].plot(self.x_l1d,self.x_data,color='C3')
 
         if self.has_fit==True:
-#            over_2d_gauss=[self.popt[0],self.popt[1],0,self.popt[5],self.popt[7],self.popt[9]]
             err_2d_gauss=[self.popt[0],0,self.popt[4],0]
-#            plt.plot(self.x_l1d,overlapped_1d(self.x_l1d, *over_2d_gauss ),color='C4')
-            plt.plot(self.x_l1d,gauss_function_1d(self.x_l1d, *err_2d_gauss ),color='C4')
-            plt.plot(self.x_l1d,self.x_data)
+            ax[0].plot(self.x_l1d,gauss_function_1d(self.x_l1d, *err_2d_gauss ),color='C1')
+            ax[0].plot(self.x_l1d,self.x_data,color='C2')
         else:
-#            over_2d_gauss=[self.ig_ave[0],self.ig_ave[1],0,self.ig_ave[4],self.ig_ave[6],self.ig_ave[9]]
             err_2d_gauss=[self.ig_ave[0],0,self.ig_ave[4],0]
-#            plt.plot(self.x_l1d,overlapped_1d(self.x_l1d, *over_2d_gauss ),color='C3')
-            plt.plot(self.x_l1d,gauss_function_1d(self.x_l1d, *err_2d_gauss ),color='C3')
-            plt.plot(self.x_l1d,self.x_data)
+            ax[0].plot(self.x_l1d,gauss_function_1d(self.x_l1d, *err_2d_gauss ),color='C3')
+            ax[0].plot(self.x_l1d,self.x_data)
         
-        plt.xlim(-1.5*pixpermm,1.5*pixpermm)
+        ax[0].set_xlim(-xlim,xlim)
+        ax[0].set_xlabel("x (mm)")
         ticks = ticker.FuncFormatter(lambda x, pos: '{0:.1f}'.format(x/pixpermm))
-        plt.gca().xaxis.set_major_formatter(ticks)
-        plt.ylabel('Intensity (a.u.)')
-        plt.title(self.bias/self.shot_count)
+        ax[0].xaxis.set_major_formatter(ticks)
+        if ylab:
+            ax[0].set_ylabel('Intensity (a.u.)')
+        if k!= None:
+            ax[0].set_title(self.bias/self.shot_count)
         
-        plt.subplot(2,1,2)
+         #Show the y-cross sectio and the fit       
+        
         if self.has_fit1d == True:
-            plt.plot(self.y_l1d,gauss_function_1d(self.y_l1d, *self.popt_ty[:-1],0))
-            plt.plot(self.y_l1d,self.y_data)
+            ax[1].plot(self.y_l1d,gauss_function_1d(self.y_l1d, *self.popt_ty[:-1],0),color='C4')
+            ax[1].plot(self.y_l1d,self.y_data,color='C3')
         if self.has_fit==True:
-#            over_2d_gauss=[self.popt[0],self.popt[1],0,self.popt[4],self.popt[6],self.popt[9]]
             err_2d_gauss=[self.popt[0],0,self.popt[3],0]
-#            plt.plot(self.y_l1d,overlapped_1d(self.y_l1d, *over_2d_gauss ),color='C4')
-            plt.plot(self.y_l1d,gauss_function_1d(self.y_l1d, *err_2d_gauss ),color='C4')
-            plt.plot(self.y_l1d,self.y_data)
+            ax[1].plot(self.y_l1d,gauss_function_1d(self.y_l1d, *err_2d_gauss ),color='C1')
+            ax[1].plot(self.y_l1d,self.y_data,color='C2')
         else:
-#            over_2d_gauss=[self.ig_ave[0],self.ig_ave[1],0,self.ig_ave[5],self.ig_ave[7],self.ig_ave[9]]
             err_2d_gauss=[self.ig_ave[0],0,self.ig_ave[3],0]
-#            plt.plot(self.y_l1d,overlapped_1d(self.y_l1d, *over_2d_gauss ),color='C3')
-            plt.plot(self.y_l1d,gauss_function_1d(self.y_l1d, *err_2d_gauss ),color='C3')
-            plt.plot(self.y_l1d,self.y_data)
-        plt.ylabel('Intensity (a.u.)')
-        plt.xlabel("x and y (mm)")
-            #self.fit1d=[self.bias/self.shot_count,self.shot_count,self.stdx,self.stdy,self.estdx,self.estdy,self.x0,self.y0,self.theta,self.m_stdx,self.e_count,self.z0/self.shot_count,self.errz0/self.shot_count]
-        plt.xlim(-1.5*pixpermm,1.5*pixpermm)
+            ax[1].plot(self.y_l1d,gauss_function_1d(self.y_l1d, *err_2d_gauss ),color='C3')
+            ax[1].plot(self.y_l1d,self.y_data)
+        if ylab:
+            ax[1].set_ylabel('Intensity (a.u.)')
+        ax[1].set_xlabel("y (mm)")
+        ax[1].set_xlim(-ylim,ylim)
         ticks = ticker.FuncFormatter(lambda x, pos: '{0:.1f}'.format(x/pixpermm))
-        plt.gca().xaxis.set_major_formatter(ticks)
-
+        ax[1].xaxis.set_major_formatter(ticks)
         
         if not os.path.exists('imgt'):
             os.makedirs('imgt')
-        
-        plt.savefig('imgt/{}.png'.format(k),dpi=250)
-        plt.clf()
+            
+        if k!= None:
+            plt.savefig('imgt/{}.png'.format(k),dpi=100)
+            plt.clf()
         
 
         
-    def save_fig(self, k):
+    def save_fig(self, k=None, ax=plt.gca(),ylab=True):
+        xlim=len(self.crop_ub[1])
+        ylim=len(self.crop_ub)
         if self.has_fit == True:
             self.Z_guess=twoD_Gaussian_mesh(self.xy,*self.ig_ave)
             self.Z_fit=twoD_Gaussian_mesh(self.xy,*self.popt)
 #            plt.contour(self.x, self.y, self.Z_guess,linewidths=0.5,colors='C4')
-            plt.contour(self.x, self.y, self.Z_fit,linewidths=0.5,colors='C1')
-            plt.imshow(self.crop_ub, cmap=plt.cm.viridis, interpolation='nearest',vmin=0,vmax=1)
+            ax.contour((self.x), (self.y), self.Z_fit,5,linewidths=0.5,colors='C1')
+            ax.imshow(self.crop_ub, cmap=plt.cm.viridis, interpolation='nearest',vmin=0,vmax=1)#,extent=np.array([-xlim,xlim,-ylim,ylim])/pixpermm)
         else: 
             self.Z=twoD_Gaussian_mesh(self.xy,*self.ig_ave)
-            plt.contour(self.x, self.y, self.Z,linewidths=0.5,colors='C4')
-            plt.imshow(self.crop_ub, cmap=plt.cm.viridis, interpolation='nearest',vmin=0,vmax=1)
+            ax.contour(self.x, self.y, self.Z,linewidths=0.5,colors='C4')
+            ax.imshow(self.crop_ub, cmap=plt.cm.viridis, interpolation='nearest',vmin=0,vmax=1)#,extent=[-xlim,-ylim,xlim,ylim])
 
+        ticksx = ticker.FuncFormatter(lambda x, pos: '{0:.1f}'.format((x-self.x0)/pixpermm))
+        ax.set_xticks([6,xlim/2,xlim-6])
+        ax.xaxis.set_major_formatter(ticksx)
         
-        plt.colorbar()
-        plt.xlabel("x (mm)")
-        plt.ylabel("y (mm)")
-        plt.title('{:.1f}'.format(self.bias/self.shot_count))
+        ticksy = ticker.FuncFormatter(lambda y, pos: '{0:.1f}'.format((y-self.y0)/pixpermm))
+        ax.set_yticks([6,ylim/2,ylim-6])
+        ax.yaxis.set_major_formatter(ticksy)
+#        plt.colorbar()
+        ax.set_xlabel("x (mm)")
+        if ylab:
+            ax.set_ylabel("y (mm)")
         
         if not os.path.exists('img'):
             os.makedirs('img')
-            
-        plt.savefig('img/{}.png'.format(k),dpi=250)
-        plt.clf()
+        
+        if k!= None:
+            ax.set_title('{:.1f}'.format(self.bias/self.shot_count))
+            plt.savefig('img/{}.png'.format(k),dpi=100)
+            plt.clf()

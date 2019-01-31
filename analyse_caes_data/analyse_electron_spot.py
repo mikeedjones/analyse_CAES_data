@@ -13,10 +13,11 @@ import scipy.ndimage.measurements as scim
 from scipy.ndimage.filters import gaussian_filter
 import scipy.interpolate as si
 import scipy.constants as sc
-import operator    
+import operator
 import re
 import pdb
 import os
+import tools
 
 from bias import bias_group
 
@@ -34,7 +35,7 @@ def makefitsize(biases,stdy, color='b',label='None'):
     return fitsize;
     
 def makefitT_z_sig(biases,stdy, color='b',label='None',yerr=None):
-    fitT=so.curve_fit(tempfit,biases,np.array(stdy)/pixpermm,sigma=yerr,p0=[35,190E-6,0],bounds=([0,184E-6,-1.5E-5],[300,203E-6,1.5E-5]))
+    fitT=so.curve_fit(tempfit,biases,np.array(stdy)/pixpermm,sigma=yerr,p0=[50,240E-6,0],bounds=([0,230E-6,-1.5E-5],[150,380E-6,1.5E-5]))
     plt.gcf()
 #    plt.plot(biases,np.array(stdy)/pixpermm*1E6,color=color,marker='.',linestyle='None')#+ '{:.1f} $\mu$m, '.format(fitT[0][1]*1E6))
     ez=np.sqrt(np.diag(fitT[1]))[2]
@@ -42,7 +43,8 @@ def makefitT_z_sig(biases,stdy, color='b',label='None',yerr=None):
     esig=np.sqrt(np.diag(fitT[1]))[1]
     biases_r=np.linspace(min(biases),max(biases),50)
     fittedfunction=tempfit(biases_r,fitT[0][0],fitT[0][1],fitT[0][2])#,fitT[0][2])
-    plt.plot(biases_r,fittedfunction*1E6,color=color,label=label+'nm, {:.1f} $\pm$ {:.1f} K, '.format(fitT[0][0],eT)+ '{:.1f} $\pm$ {:.1f} $\mu$m, '.format(fitT[0][1]*1E6,esig*1E6))# +'z0=''{:.1f} $\pm$ {:.1f} mm,'.format(fitT[0][2]*1E3,ez*1E3))
+#    plt.plot(biases_r,fittedfunction*1E6,color=color,label=label+'nm, {:.1f} $\pm$ {:.1f} K, '.format(fitT[0][0],eT)+ '{:.1f} $\pm$ {:.1f} $\mu$m, '.format(fitT[0][1]*1E6,esig*1E6))# +'z0=''{:.1f} $\pm$ {:.1f} mm,'.format(fitT[0][2]*1E3,ez*1E3))
+    plt.plot(biases_r,fittedfunction*1E6,color=color,label=label+' nm, {:.1f} $\pm$ {:.1f} K, '.format(fitT[0][0],eT)+ '{:.1f} $\pm$ {:.1f} $\mu$m, '.format(fitT[0][1]*1E6,esig*1E6))# +'z0=''{:.1f} $\pm$ {:.1f} mm,'.format(fitT[0][2]*1E3,ez*1E3))
     plt.xlabel("Einzel lens bias / V")
     plt.ylabel("Electron bunch size / mm")
     #print(biases[np.argmin(fittedfunction)])
@@ -67,12 +69,14 @@ def makefitT(biases,stdy, color='b',label='None',yerr=None):
     
     return fitT, eT, esig;
 
-#A_tab=np.genfromtxt('../../experimental_data/combined_DC/A_and_B/A_vs_z_vs_BE.txt')
-#B_tab=np.genfromtxt('../../experimental_data/combined_DC/A_and_B/B_vs_z_vs_BE.txt')
+A_tab=np.genfromtxt('../../experimental_data/combined_DC/A_and_B/A_vs_z_vs_BE.txt')
+B_tab=np.genfromtxt('../../experimental_data/combined_DC/A_and_B/B_vs_z_vs_BE.txt')
 
+#A_tab=np.genfromtxt('fake_data/AandB/A_vs_z_vs_BE.txt')
+#B_tab=np.genfromtxt('fake_data/AandB/B_vs_z_vs_BE.txt')
 
-A_tab=np.genfromtxt('../../experimental_data/28-06-18/AC/A_and_B/lens_pos/-0/A_vs_z_vs_BE.txt')
-B_tab=np.genfromtxt('../../experimental_data/28-06-18/AC/A_and_B/lens_pos/-0/B_vs_z_vs_BE.txt')
+#A_tab=np.genfromtxt('../../experimental_data/28-06-18/AC/A_and_B/lens_pos/-0/A_vs_z_vs_BE.txt')
+#B_tab=np.genfromtxt('../../experimental_data/28-06-18/AC/A_and_B/lens_pos/-0/B_vs_z_vs_BE.txt')
 #BE_table=np.genfromtxt('19-08-17/z_v_Ext_v_BE.txt')
 
 def B(E,z):
@@ -134,6 +138,7 @@ def tempfit(U, T, sigmay, z):#, yfwhm):
 #    sigmay=210E-6
 #    sigmaz=sigmay#=1E-4#1E-3
     E=2693/2
+#    *1.091
     y=(np.sqrt(abs((A(U*1.091,z)**2*sigmay**2)+B(U,z)**2*(sc.k*T)/(2*sc.e*E)))) #0.506211 is conversion factor between
     #y=(np.sqrt(abs((A_blur(U,z,sigmaz)**2*sigmay**2)+B_blur(U,z,sigmaz)**2*(sc.k*T)/(2*sc.e*E)))) #0.506211 is conversion factor between
     return y;
@@ -233,6 +238,7 @@ def importdata(directory, verbose=0, biases=[], outdir='out', outfile='none_give
                 if "header" in names : continue    
                 if "bg" in names : continue
                 if "profile.mp4" in names: continue
+                if ".npy" in names: continue
             
                 filepath = os.path.join(root,names)
                 
@@ -302,8 +308,8 @@ def fit_run(bias_groups, bg, bg_open, directory="out/test/temp",outfile='none_gi
 
                 group.fit_gaussain(bg_norm)
 #                    group.fit_1d_gaussain(bg_norm)
-                group.save_fig(k)
-                group.transverse(k)
+#                group.save_fig(k=k)
+#                group.transverse(k=k)
                 fits.append(group.fit)
 #                    fits1d.append(group.fit1d)
                 k+=1
@@ -313,8 +319,8 @@ def fit_run(bias_groups, bg, bg_open, directory="out/test/temp",outfile='none_gi
                 traceback.print_exc()
                 print(bias)
                 #group.initial_guess(bg_norm)
-                group.transverse(k)
-                group.save_fig(k)
+#                group.transverse(k)
+#                group.save_fig(k)
                 k+=1
                 plt.clf()
                 continue
@@ -322,15 +328,15 @@ def fit_run(bias_groups, bg, bg_open, directory="out/test/temp",outfile='none_gi
         np.savetxt(outdir+'/'+outfile+'.txt', fits, header='biases shot_count stdx stdy errstdx errstdy x0 y0 theta modelstdx e_count z0 errz0' )
         np.savetxt(outdir_1d+'/'+outfile+'.txt', fits1d, header='biases shot_count stdx stdy errstdx errstdy x0 y0 theta modelstdx e_count z0 errz0' )
         
-        if os.path.exists(viddir+'/'+outfile+".mp4"):
-            os.remove(viddir+'/'+outfile+".mp4")
-        profileanimation(viddir+'/'+outfile+".mp4",'img')
-        
-        if os.path.exists(viddir+'/t'+outfile+".mp4"):
-            os.remove(viddir+'/t'+outfile+".mp4")
-        profileanimation(viddir+'/t'+outfile+".mp4",'imgt')
-        plt.clf()
-            
+#        if os.path.exists(viddir+'/'+outfile+".mp4"):
+#            os.remove(viddir+'/'+outfile+".mp4")
+#        profileanimation(viddir+'/'+outfile+".mp4",'img')
+#        
+#        if os.path.exists(viddir+'/t'+outfile+".mp4"):
+#            os.remove(viddir+'/t'+outfile+".mp4")
+#        profileanimation(viddir+'/t'+outfile+".mp4",'imgt')
+#        plt.clf()
+#            
             #print(makefitT(biases,np.array(stdy)))
             
             #plt.savefig('out/'+expt_name+"biases_vs_stdx.svg")
@@ -369,11 +375,15 @@ def importfolder(directory,ptype='e'):
                 print(folders)
                 continue
             else:
-                fit_run(*importdata(directory+'/'+folders,ptype=ptype,decimation=1),directory=directory+'/'+folders)
+                group=fit_run(*importdata(directory+'/'+folders,ptype=ptype,decimation=1),directory=directory+'/'+folders)
+#                np.save(directory+'/'+folders+'/bias_group.npy', group)
+                tools.show_6(group,fout=folders+'.pdf')
                 print(folders+' recorded')
             
 def strip_outliers(data):
-    outliers=np.where((data['errstdy']>1000) | (data['stdy']>1000) | (data['biases']>4800))#data['stdy']/100)
+    outliers=np.where(data['biases']>4550)#data['stdy']/100)
+#    print('outliers')
+#    print(outliers)
     return np.delete(data,outliers)
 
 def strip_low_repeats(stat,count):
@@ -398,17 +408,17 @@ def plot_waist_scan(directory):
     error=[]
     for root, dirs, files in os.walk(directory):
         for names in files:
-            print(names)
+#            print(names)
             if names==".DS_Store" : continue
             if "vs" in names : continue
             wl=float(re.split('_|\.',names)[0])+float(re.split('_|\.',names)[1])/100
             w.append(wl)
             data=np.genfromtxt(directory+'/'+names, names=True, delimiter=' ')
-            e_c.append(np.mean(data['e_count']/4.06))
+            e_c.append(np.mean(data['e_count']))
             
         wlrange=max(w)-min(w)
         e_crange=max(e_c)-min(e_c)
-        print(wlrange)
+#        print(wlrange)
         T=[]
         Terr=[]
         for names in files:
@@ -425,19 +435,26 @@ def plot_waist_scan(directory):
                 cx=plt.cm.viridis((wavelength-min(w))/wlrange)
                 cy=plt.cm.viridis((wavelength-min(w))/wlrange)
             else : 
-                cx='C0'#plt.cm.viridis((e_count-min(e_c))/e_crange)
-                cy='C1'#plt.cm.viridis((e_count-min(e_c))/e_crange)
+                cx=plt.cm.viridis((e_count-min(e_c))/e_crange)
+                cy=plt.cm.viridis((e_count-min(e_c))/e_crange)
             #data=strip_outliers(data)
-            
-            #print(data)
+            print(names)
+            print(e_count)
             
 #            plt.plot(data['biases'], data['stdx'],'x')
             
             unique, counts = np.unique(data['biases'], return_counts=True)
             
 #            print('ec={:}'.format(e_count))
-            
+                        
             data=strip_outliers(data)
+            
+            outliers=np.where((np.isnan(data['stdx'])))#data['stdy']/100)
+            data=np.delete(data,outliers)
+            
+            outliers=np.where((data['stdy']/data['stdx'])>1.5)#data['stdy']/100)
+            data=np.delete(data,outliers)
+
             
             bias_round=-1
             
@@ -505,13 +522,15 @@ def plot_waist_scan(directory):
                     key=operator.itemgetter(1))
         handles2, labels2, e_c2 = zip(*hl)
 #        lgd=plt.legend(handles, labels,loc="upper left", bbox_to_anchor=(1,1))
-        lgd=plt.legend(handles2, labels2,loc="upper left", bbox_to_anchor=(1,1))
+        lgd=plt.legend(handles2, labels2,loc='best', bbox_to_anchor=(.91,-.2))
 #        plt.tight_layout()
         
 #        pdb.set_trace()
         plt.xlabel('Einzel lens bias (V)')
         plt.ylabel('Beam size at MCP ($\mu$m)')
-        plt.text(5500,100,"z position = {:.3f} $\pm$ {:.3f} $\mu$m \nsource size = {:.1f} $\pm$ {:.1f} $\mu$m \nTemp error ave = {:.1f} K".format(np.mean(np.array(T)[:,2])*1E6,np.std(np.array(T)[:,2])*1E6,np.mean(np.array(T)[:,1])*1E6,np.std(np.array(T)[:,1])*1E6,np.mean(np.array(Terr)[:,0])))
+#        plt.text(5000,100,"z position = {:.3f} $\pm$ {:.3f} $\mu$m \nsource size = {:.1f} $\pm$ {:.1f} $\mu$m \nTemp error ave = {:.1f} K".format(np.mean(np.array(T)[:,2])*1E6,np.std(np.array(T)[:,2])*1E6,np.mean(np.array(T)[:,1])*1E6,np.std(np.array(T)[:,1])*1E6,np.mean(np.array(Terr)[:,0])))
+    print("z position = {:.3f} $\pm$ {:.3f} $\mu$m \nsource size = {:.1f} $\pm$ {:.1f} $\mu$m \nTemp error ave = {:.1f} K".format(np.mean(np.array(T)[:,2])*1E6,np.std(np.array(T)[:,2])*1E6,np.mean(np.array(T)[:,1])*1E6,np.std(np.array(T)[:,1])*1E6,np.mean(np.array(Terr)[:,0])))
+
 #        plt.ylim([0.13,0.25])
 #        plt.xlim([200,600])
         

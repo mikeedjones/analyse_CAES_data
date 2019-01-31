@@ -4,5 +4,9 @@
 *.txt
 *.svg
 *.gdf
-*.acs
+*.pdf
+*.npy
+*.asc
+*.pyc
+
 
